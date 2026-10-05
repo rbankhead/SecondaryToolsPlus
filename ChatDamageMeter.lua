@@ -56,6 +56,29 @@ local function FixScrollBoxHeight(win)
 	scrollBox:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -1, 6)
 end
 
+-- Confirmed in-game: a secondary session window this addon creates (via the
+-- real ShowNewSecondarySessionWindow accessor, not created directly) stays
+-- permanently tainted by this addon from then on, not just during the one
+-- deferred call that created it - any LATER native code touching that same
+-- window object, including a routine combat-session-duration refresh that
+-- has nothing to do with this addon, still throws "attempt to compare ...
+-- a secret number value, while execution tainted by 'SecondaryToolsPlus'"
+-- in DamageMeterSessionWindowMixin:SetSessionDuration (confirmed real,
+-- DamageMeterSessionWindow.lua:928 - it just compares durationSeconds ~= 0
+-- to decide whether to show a "[MM:SS]" timer prefix). The C_Timer.After(0,
+-- ...) defer below still matters for the window's own creation, but can't
+-- un-taint it for its whole remaining lifetime, so this wraps the one
+-- function that crashes in a pcall instead - worst case the timer prefix on
+-- a secondary window just doesn't update for a tick, instead of a Lua error
+-- popping up on every combat tick.
+local originalSetSessionDuration = DamageMeterSessionWindowMixin.SetSessionDuration
+DamageMeterSessionWindowMixin.SetSessionDuration = function(self, ...)
+	local ok = pcall(originalSetSessionDuration, self, ...)
+	if not ok then
+		return
+	end
+end
+
 -- ChatFrame1EditBox (the "Say:" draft box) default-anchors its TOPLEFT to
 -- ChatFrame1's BOTTOMLEFT (confirmed in the real XML), which is why it sits
 -- below the chat text. Moved inside the chat window instead, flush at the
