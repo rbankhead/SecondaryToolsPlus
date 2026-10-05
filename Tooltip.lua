@@ -34,14 +34,36 @@ local db -- SecondaryToolsPlusDB.tooltip, set by Addon.InitTooltip
 -- rather than only from the OnUpdate driver, closes that gap so the very
 -- first frame already uses this exact anchor instead of a different native
 -- one for one frame first).
+-- Confirmed in-game: pcall around a call into Blizzard's own SetWorldCursor
+-- did NOT stop the secret-value error from surfacing (the error dialog still
+-- showed "[C]: in function 'pcall'" right there in its own stack - pcall ran,
+-- the error still displayed). This client deliberately makes secret-value
+-- violations bypass pcall, the same way protected-action violations always
+-- have - otherwise an addon could use pcall to probe for secret data by
+-- timing/observing what it catches, defeating the whole point of marking it
+-- secret. So wrapping the earlier SetWorldCursor override in pcall was never
+-- going to work; the only real fix is to never put this addon's code
+-- synchronously inside Blizzard's own tooltip-population call at all - that
+-- override (and its anchorType substitution) is gone entirely now.
+--
+-- Repositions GameTooltip's bottom-left corner to the cursor, bottom-left
+-- consistently (confirmed this is the corner the player wants). Also doubles
+-- as the fix for the ~3s fade-out lingering on world unit/object mouseover:
+-- GameTooltipDataMixin:SetWorldCursor (confirmed via this client's own
+-- GameTooltip.lua) calls the tooltip's native :FadeOut() on mouse-off
+-- whenever its anchorType was Default (the HUD mode this client defaults
+-- to) - a slow built-in animation. Rather than intercept that call, this
+-- just watches for GetAlpha() < 1 (a fade in progress, for any reason) from
+-- this addon's own OnUpdate driver - a separate, clean call stack Blizzard's
+-- tooltip code never runs inside of, so nothing here is at risk of tainting
+-- whatever happens later - and hides it immediately, cutting the fade down
+-- to at most one frame's worth instead of letting the full animation play.
 local function PositionAtCursor()
 	if not GameTooltip:IsShown() then
 		return
 	end
-	-- Left over from chasing the slow-fade bug below before finding its real
-	-- cause - harmless to keep: skip touching position while something has
-	-- the tooltip mid-fade for any reason, rather than fighting it.
 	if GameTooltip:GetAlpha() < 1 then
+		GameTooltip:Hide()
 		return
 	end
 	local scale = GameTooltip:GetEffectiveScale()
@@ -51,51 +73,6 @@ local function PositionAtCursor()
 	local x, y = GetCursorPosition()
 	GameTooltip:ClearAllPoints()
 	GameTooltip:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", (x / scale) + 16, (y / scale) + 16)
-end
-
--- The real cause of the ~3s linger on world unit/object mouseover (confirmed
--- via this client's own GameTooltip.lua, GameTooltipDataMixin:SetWorldCursor)
--- - world tooltips go through a completely separate path from ordinary UI
--- tooltips, driven by the engine with an anchorType argument
--- (Enum.WorldCursorAnchorType). Default (the HUD mode this client defaults
--- to) explicitly sets fadeOut = true and calls the tooltip's native
--- :FadeOut() on mouse-off - a slow built-in animation, nothing to do with
--- this addon's own positioning code. The same function's Cursor branch
--- doesn't set fadeOut at all, so it hides immediately via plain :Hide()
--- instead - confirmed in source, not an assumption. Overriding
--- SetWorldCursor to substitute Cursor for Default before calling the real
--- implementation gets both the instant hide and native cursor-tracking for
--- world tooltips specifically, for free, without fighting the engine.
--- The Cursor branch's own native SetOwner(UIParent, "ANCHOR_CURSOR") still
--- positions it once at the engine's own offset before this addon's driver
--- catches up a frame later - confirmed in-game, same one-frame flash as the
--- GameTooltip_SetDefaultAnchor path had before PositionAtCursor() was called
--- synchronously from inside that hook too. Same fix here: call it
--- synchronously right after the real SetWorldCursor runs, not just from the
--- driver's OnUpdate.
--- Calling the real SetWorldCursor from inside this override puts this
--- addon's own code on the call stack for everything it does synchronously,
--- including Blizzard's own tooltip-line population further down (ProcessInfo
--- -> ProcessLines -> GameTooltip_AddColoredLine) - confirmed in-game, that
--- can throw the same "secret value" error as the Damage Meter taint issue,
--- just on a line's color table that time instead of a duration number (some
--- unit tooltip lines - combat/threat-related coloring, going by when it
--- happened - are apparently secret too on this client). Outside of any
--- addon's hook, that same native code runs untainted and never hits this.
--- pcall around the real call keeps this addon from being the reason it
--- throws, at the cost of that one tooltip not finishing populating on
--- whatever rare tick this happens on - better than a Lua error on something
--- as routine as a world mouseover.
-local originalSetWorldCursor = GameTooltip.SetWorldCursor
-GameTooltip.SetWorldCursor = function(self, anchorType, parent)
-	if anchorType == Enum.WorldCursorAnchorType.Default then
-		anchorType = Enum.WorldCursorAnchorType.Cursor
-	end
-	local ok, result = pcall(originalSetWorldCursor, self, anchorType, parent)
-	if ok then
-		PositionAtCursor()
-	end
-	return ok and result or nil
 end
 
 -- A third, separate slow-fade source, confirmed via this client's own
