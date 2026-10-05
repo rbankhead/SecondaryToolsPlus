@@ -40,6 +40,7 @@ local Addon = SecondaryToolsPlus
 
 Addon.ChatDamageMeterDefaults = {
 	damageMeterWindowCount = 3,
+	windowTypes = {}, -- [windowIndex] = Enum.DamageMeterType, this addon's own memory of each window's chosen metric
 }
 
 local db -- SecondaryToolsPlusDB.chatDamageMeter, set by Addon.InitChatDamageMeter
@@ -194,12 +195,48 @@ local function GetDesiredWindowCount()
 	return desired
 end
 
+-- Confirmed in-game: the window reset to Damage Done on every login despite
+-- Blizzard's own per-character persistence existing for this
+-- (DamageMeterPerCharacterSettings, confirmed real in DamageMeter.lua,
+-- restored via LoadSavedWindowDataList at the Damage Meter's own OnLoad,
+-- well before this addon runs) - something about that restoration not
+-- surviving this addon's own window-count management isn't fully
+-- understood, so rather than keep chasing a native mechanism this addon
+-- doesn't control, it just remembers each window's chosen type itself.
+-- hooksecurefunc on the real SetSessionWindowDamageMeterType (confirmed
+-- real, what the native per-window dropdown calls) captures a change the
+-- instant the player makes it, by window index (confirmed real accessor,
+-- DamageMeterSessionWindowMixin:GetSessionWindowIndex) - including this
+-- addon's own calls to it below, which is harmless, re-saving the same
+-- value.
+hooksecurefunc(DamageMeter, "SetSessionWindowDamageMeterType", function(_, sessionWindow, damageMeterType)
+	if db and sessionWindow and sessionWindow.GetSessionWindowIndex then
+		db.windowTypes[sessionWindow:GetSessionWindowIndex()] = damageMeterType
+	end
+end)
+
+-- Re-applies this addon's own remembered type for every currently-shown
+-- window, skipping any that's already showing the right one (SetSession-
+-- WindowDamageMeterType isn't a no-op query, so this avoids calling it
+-- needlessly on every login for a window that was already correct).
+local function RestoreWindowTypes()
+	if not db then
+		return
+	end
+	local maxCount = DamageMeter.GetMaxSessionWindowCount and DamageMeter:GetMaxSessionWindowCount() or 3
+	for index = 1, maxCount do
+		local savedType = db.windowTypes[index]
+		local win = savedType and DamageMeter:GetSessionWindow(index)
+		if win and win:IsShown() and DamageMeter:GetSessionWindowDamageMeterType(win) ~= savedType then
+			DamageMeter:SetSessionWindowDamageMeterType(win, savedType)
+		end
+	end
+end
+
 -- Grows or shrinks the number of shown session windows to match the desired
 -- count, via the real accessors (ShowNewSecondarySessionWindow/
 -- HideSessionWindow/CanHideSessionWindow) rather than creating or destroying
--- frames directly - hiding preserves a window's configured metric (Healing
--- Done, etc) in its windowData, so toggling the count back up later restores
--- what the player had picked rather than resetting to Damage Done.
+-- frames directly.
 local function ApplyWindowCount(desiredCount)
 	if not DamageMeter then
 		return
@@ -219,6 +256,8 @@ local function ApplyWindowCount(desiredCount)
 			DamageMeter:HideSessionWindow(win)
 		end
 	end
+
+	RestoreWindowTypes()
 end
 
 -- Lays out every currently-shown session window as an equal-width column
