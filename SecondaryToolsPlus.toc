@@ -1,0 +1,15 @@
+## Interface: 16001
+## Title: SecondaryToolsPlus
+## Notes: Combined replacement for ClassColoredForeverFrames, SwingTimerBuffTracking, HiddenMicroMenuBagBar, SymmetricalChatAndDamageMeter, and HudTooltipTweaks - one addon, one settings panel (Interface Options -> AddOns -> SecondaryToolsPlus), one Interface version to keep current per patch instead of five.
+## Author: Richard Bankhead
+## Version: 1.0.0
+## SavedVariables: SecondaryToolsPlusDB
+## SavedVariablesPerCharacter: SecondaryToolsPlusCharDB
+
+Core.lua
+ClassColors.lua
+SwingTimer.lua
+HiddenBars.lua
+ChatDamageMeter.lua
+Tooltip.lua
+Options.lua
