@@ -73,14 +73,29 @@ end
 -- synchronously from inside that hook too. Same fix here: call it
 -- synchronously right after the real SetWorldCursor runs, not just from the
 -- driver's OnUpdate.
+-- Calling the real SetWorldCursor from inside this override puts this
+-- addon's own code on the call stack for everything it does synchronously,
+-- including Blizzard's own tooltip-line population further down (ProcessInfo
+-- -> ProcessLines -> GameTooltip_AddColoredLine) - confirmed in-game, that
+-- can throw the same "secret value" error as the Damage Meter taint issue,
+-- just on a line's color table that time instead of a duration number (some
+-- unit tooltip lines - combat/threat-related coloring, going by when it
+-- happened - are apparently secret too on this client). Outside of any
+-- addon's hook, that same native code runs untainted and never hits this.
+-- pcall around the real call keeps this addon from being the reason it
+-- throws, at the cost of that one tooltip not finishing populating on
+-- whatever rare tick this happens on - better than a Lua error on something
+-- as routine as a world mouseover.
 local originalSetWorldCursor = GameTooltip.SetWorldCursor
 GameTooltip.SetWorldCursor = function(self, anchorType, parent)
 	if anchorType == Enum.WorldCursorAnchorType.Default then
 		anchorType = Enum.WorldCursorAnchorType.Cursor
 	end
-	local result = originalSetWorldCursor(self, anchorType, parent)
-	PositionAtCursor()
-	return result
+	local ok, result = pcall(originalSetWorldCursor, self, anchorType, parent)
+	if ok then
+		PositionAtCursor()
+	end
+	return ok and result or nil
 end
 
 -- A third, separate slow-fade source, confirmed via this client's own
