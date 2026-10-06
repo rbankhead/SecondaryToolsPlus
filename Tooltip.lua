@@ -26,14 +26,6 @@ Addon.TooltipDefaults = {
 
 local db -- SecondaryToolsPlusDB.tooltip, set by Addon.InitTooltip
 
--- Repositions GameTooltip's bottom-left corner to the cursor, bottom-left
--- consistently (confirmed this is the corner the player wants - the
--- momentary centered-on-cursor flash before snapping to this came from a
--- now-removed ANCHOR_CURSOR call racing this on the next frame; calling this
--- synchronously from inside the GameTooltip_SetDefaultAnchor hook below,
--- rather than only from the OnUpdate driver, closes that gap so the very
--- first frame already uses this exact anchor instead of a different native
--- one for one frame first).
 -- Confirmed in-game: pcall around a call into Blizzard's own SetWorldCursor
 -- did NOT stop the secret-value error from surfacing (the error dialog still
 -- showed "[C]: in function 'pcall'" right there in its own stack - pcall ran,
