@@ -58,11 +58,35 @@ local function GetOrCreateSlot(i)
 	return slot
 end
 
+
 local function HideSlot(i)
 	local slot = slots[i]
 	if slot then
 		slot.icon:Hide()
 		slot.countdown:Hide()
+	end
+end
+
+-- Confirmed in-game: "SecondaryToolsPlus has been blocked from an action
+-- only available to the Blizzard UI" - WoW's older combat-lockdown system
+-- (separate from the secret-value restrictions elsewhere in this addon),
+-- which blocks creating new regions on frames tied to the secure/managed UI
+-- cluster while in combat. statusBar is a child of the native Swing Timer
+-- frame (inherits BottomManagedFrameTemplate, the same secure-adjacent
+-- bottom-HUD management the action bars use), and this started happening
+-- right after combat-log tracking was added - that's the first path able to
+-- track a genuinely NEW buff while already in combat (aura-based tracking
+-- was itself blocked from seeing new buffs in combat until now), so it's
+-- the first time GetOrCreateSlot ever ran mid-combat and actually needed to
+-- create a new slot, rather than reuse an existing one. Pre-creating every
+-- slot up front, out of combat (called once from PLAYER_LOGIN, which can't
+-- itself happen mid-combat), means combat-log tracking only ever reuses
+-- already-existing slots afterward - no CreateTexture/CreateFontString call
+-- is ever made while in combat again.
+local function PreCreateSlots()
+	for i = 1, MAX_TRACKED do
+		GetOrCreateSlot(i)
+		HideSlot(i)
 	end
 end
 
@@ -574,6 +598,7 @@ frame:SetScript("OnEvent", function(_, event)
 			print("|cff33ccffSecondaryToolsPlus|r: the selected native Swing Timer bar wasn't found; the native Swing Timer UI may have changed.")
 			return
 		end
+		PreCreateSlots()
 		RefreshBuff()
 	elseif event == "UNIT_AURA" then
 		RefreshBuff()
