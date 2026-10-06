@@ -373,28 +373,13 @@ function Options:Init()
 		function() return SwingDb().allowlist end)
 	y = y - allowHeight - 8
 
-	-- Combat-tracked buffs (name:seconds), tracked via the real
-	-- SPELL_CAST_SUCCESS combat log event rather than an aura read -
-	-- confirmed necessary in-game: aura reads are blocked entirely while in
-	-- combat on this client (ShouldAurasBeSecret), so a buff applied mid-
-	-- fight (a Warrior's self-cast Bloodrage, reported not showing) is
-	-- invisible to the Buff source modes above until combat ends. This list
-	-- works in combat since it never reads the live aura at all - it just
-	-- starts its own countdown from the duration given here the moment the
-	-- named spell is cast.
-	local combatDescLabel = scrollChild:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-	combatDescLabel:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 16, y)
-	combatDescLabel:SetPoint("RIGHT", scrollChild, "RIGHT", -16, 0)
-	combatDescLabel:SetJustifyH("LEFT")
-	combatDescLabel:SetText("Combat-tracked buffs - works even during combat, unlike everything above, but only for abilities listed here with their known duration.")
-	y = y - 28
-
-	local combatEditor, combatHeight = MakeListEditor(scrollChild, 16, y,
-		"Combat-tracked buffs (Name:Seconds, e.g. Bloodrage:10)",
-		function(entry) Addon.SwingTimer.AddCombatBuff(entry) end,
-		function(entry) Addon.SwingTimer.RemoveCombatBuff(entry) end,
-		function() return SwingDb().combatBuffs end)
-	y = y - combatHeight - 8
+	-- No combat-tracked-buffs list here on purpose - that used to be a
+	-- manual "Name:Seconds" list, explicitly rejected in favor of fully
+	-- automatic tracking. It's automatic now: Core.lua learns each ability's
+	-- duration itself from combat log timestamps the first time it's seen,
+	-- and uses the existing Buff source/Blocklist/Allowlist settings above
+	-- for everything it tracks afterward, in or out of combat - nothing to
+	-- configure here.
 
 	table.insert(refreshers, function()
 		local d = SwingDb()
@@ -407,7 +392,6 @@ function Options:Init()
 		stIconSize:SetValue(d.iconSize)
 		blockEditor:Refresh()
 		allowEditor:Refresh()
-		combatEditor:Refresh()
 	end)
 
 	------------------------------------------------------------------
